@@ -1,0 +1,198 @@
+import java.io.*;  
+import java.net.*;  
+import java.util.*;  
+
+public class SimpleHttpServer {  
+    private static final int PORT = 8088;  
+    private static List<Product> products = new ArrayList<>();  
+    
+    public static void main(String[] args) {  
+        // Ініціалізуємо масив товарів  
+        products.add(new Product("Товар 1", 100));  
+        products.add(new Product("Товар 2", 200));  
+        products.add(new Product("Товар 3", 300));  
+        products.add(new Product("Товар 4", 400));  
+        products.add(new Product("Товар 5", 500));  
+
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {  
+            System.out.println("Сервер працює на порту " + PORT);  
+            while (true) {  
+                Socket clientSocket = serverSocket.accept();  
+                handleClientRequest(clientSocket);  
+            }  
+        } catch (IOException e) {  
+            e.printStackTrace();  
+        }  
+    }  
+
+    private static void handleClientRequest(Socket clientSocket) {  
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));  
+             PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)) {  
+
+            // Читання запиту  
+            String requestLine = in.readLine();  
+            if (requestLine == null || requestLine.isEmpty()) return;  
+
+            // Логування запиту  
+            System.out.println("Запит: " + requestLine);  
+            String[] requestParts = requestLine.split(" ");  
+            String method = requestParts[0];  
+            String path = requestParts[1];  
+
+            // Зчитування заголовків  
+            Map<String, String> headers = new HashMap<>();  
+            String line;  
+            while (!(line = in.readLine()).isEmpty()) {  
+                String[] headerParts = line.split(": ", 2);  
+                if (headerParts.length == 2) {  
+                    headers.put(headerParts[0], headerParts[1]);  
+                }  
+            }  
+
+            // Обробка запитів  
+            Request request = new Request(method, path, headers);  
+            Response response = new Response(out);  
+
+            if (request.getMethod().equals("GET") && request.getUrl().equals("/home")) {  
+                response.sendResponse(200, "text/html", "<h1>Домашня сторінка</h1>");  
+            } else if (request.getMethod().equals("GET") && request.getUrl().equals("/about")) {  
+                response.sendResponse(200, "text/html", "<h1>Інформація про мене</h1><p>Прізвище, Ім'я, Група, Улюблений фільм, Улюблена пісня</p>");  
+            } else if (request.getMethod().equals("GET") && request.getUrl().equals("/products")) {  
+                handleProductRequest(request, response);  
+            } else if (request.getMethod().equals("POST") && request.getUrl().equals("/addProduct")) {  
+                handleAddProductRequest(in, response);  
+            } else {  
+                response.sendResponse(404, "text/plain", "404 Not Found");  
+            }  
+        } catch (IOException e) {  
+            e.printStackTrace();  
+        }  
+    }  
+
+    private static void handleProductRequest(Request request, Response response) {  
+        // Отримуємо параметри запиту  
+        Map<String, String> queryParams = parseQueryParameters(request.getUrl());  
+        double minPrice = queryParams.containsKey("minPrice") ? Double.parseDouble(queryParams.get("minPrice")) : 0;  
+        double maxPrice = queryParams.containsKey("maxPrice") ? Double.parseDouble(queryParams.get("maxPrice")) : Double.MAX_VALUE;  
+        int limit = queryParams.containsKey("limit") ? Integer.parseInt(queryParams.get("limit")) : products.size();  
+
+        StringBuilder body = new StringBuilder("<h1>Список товарів</h1><ul>");  
+        int count = 0;  
+
+        for (Product product : products) {  
+            if (product.getPrice() >= minPrice && product.getPrice() <= maxPrice && count < limit) {  
+                body.append("<li>").append(product.getName()).append(" - ").append(product.getPrice()).append("</li>");  
+                count++;  
+            }  
+        }  
+        body.append("</ul>");  
+
+        response.sendResponse(200, "text/html", body.toString());  
+    }  
+
+    private static void handleAddProductRequest(BufferedReader in, Response response) throws IOException {  
+        StringBuilder requestBody = new StringBuilder();  
+        String line;  
+        while ((line = in.readLine()) != null && !line.isEmpty()) {  
+            requestBody.append(line);  
+        }  
+
+        // Проста "обробка" отриманих даних  
+        String[] parts = requestBody.toString().split(",");  
+        if (parts.length == 2) {  
+            String productName = parts[0].trim();  
+            double productPrice = Double.parseDouble(parts[1].trim());  
+            products.add(new Product(productName, productPrice));  
+            response.sendResponse(200, "text/plain", "Товар додано: " + productName);  
+        } else {  
+            response.sendResponse(400, "text/plain", "Неправильні дані");  
+        }  
+    }  
+
+    private static Map<String, String> parseQueryParameters(String url) {  
+        Map<String, String> queryParams = new HashMap<>();  
+        int questionMarkIndex = url.indexOf("?");  
+        if (questionMarkIndex != -1) {  
+            String queryString = url.substring(questionMarkIndex + 1);  
+            String[] pairs = queryString.split("&");  
+            for (String pair : pairs) {  
+                String[] keyValue = pair.split("=");  
+                if (keyValue.length == 2) {  
+                    queryParams.put(keyValue[0], keyValue[1]);  
+                }  
+            }  
+        }  
+        return queryParams;  
+    }  
+}  
+
+class Request {  
+    private String method;  
+    private String url;  
+    private Map<String, String> headers;  
+
+    public Request(String method, String url, Map<String, String> headers) {  
+        this.method = method;  
+        this.url = url;  
+        this.headers = headers;  
+    }  
+
+    public String getMethod() {  
+        return method;  
+    }  
+
+    public String getUrl() {  
+        return url;  
+    }  
+
+    public Map<String, String> getHeaders() {  
+        return headers;  
+    }  
+}  
+
+class Response {  
+    private PrintWriter out;  
+
+    public Response(PrintWriter out) {  
+        this.out = out;  
+    }  
+
+    public void sendResponse(int statusCode, String contentType, String body) {  
+        out.println("HTTP/1.1 " + statusCode + " " + getStatusMessage(statusCode));  
+        out.println("Content-Type: " + contentType);  
+        out.println("Connection: close");  
+        out.println();  
+        out.println(body);  
+    }  
+
+    private String getStatusMessage(int statusCode) {  
+        switch (statusCode) {  
+            case 200:  
+                return "OK";  
+            case 404:  
+                return "Not Found";  
+            case 400:  
+                return "Bad Request";  
+            default:  
+                return "Internal Server Error";  
+        }  
+    }  
+}  
+
+class Product {  
+    private String name;  
+    private double price;  
+
+    public Product(String name, double price) {  
+        this.name = name;  
+        this.price = price;  
+    }  
+
+    public String getName() {  
+        return name;  
+    }  
+
+    public double getPrice() {  
+        return price;  
+    }  
+}
