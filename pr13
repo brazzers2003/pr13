@@ -5,14 +5,13 @@ import java.util.*;
 public class SimpleHttpServer {  
     private static final int PORT = 8088;  
     private static List<Product> products = new ArrayList<>();  
-    
+
     public static void main(String[] args) {  
-        // Ініціалізуємо масив товарів  
-        products.add(new Product("Товар 1", 100));  
-        products.add(new Product("Товар 2", 200));  
-        products.add(new Product("Товар 3", 300));  
-        products.add(new Product("Товар 4", 400));  
-        products.add(new Product("Товар 5", 500));  
+        products.add(new Product("Ноутбук", 1200));  
+        products.add(new Product("Телефон", 899));  
+        products.add(new Product("Планшет", 499));  
+        products.add(new Product("Навушники", 159));  
+        products.add(new Product("Фітнес-браслет", 89));  
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {  
             System.out.println("Сервер працює на порту " + PORT);  
@@ -29,17 +28,13 @@ public class SimpleHttpServer {
         try (BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));  
              PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)) {  
 
-            // Читання запиту  
             String requestLine = in.readLine();  
             if (requestLine == null || requestLine.isEmpty()) return;  
 
-            // Логування запиту  
-            System.out.println("Запит: " + requestLine);  
             String[] requestParts = requestLine.split(" ");  
             String method = requestParts[0];  
             String path = requestParts[1];  
 
-            // Зчитування заголовків  
             Map<String, String> headers = new HashMap<>();  
             String line;  
             while (!(line = in.readLine()).isEmpty()) {  
@@ -49,7 +44,6 @@ public class SimpleHttpServer {
                 }  
             }  
 
-            // Обробка запитів  
             Request request = new Request(method, path, headers);  
             Response response = new Response(out);  
 
@@ -70,7 +64,6 @@ public class SimpleHttpServer {
     }  
 
     private static void handleProductRequest(Request request, Response response) {  
-        // Отримуємо параметри запиту  
         Map<String, String> queryParams = parseQueryParameters(request.getUrl());  
         double minPrice = queryParams.containsKey("minPrice") ? Double.parseDouble(queryParams.get("minPrice")) : 0;  
         double maxPrice = queryParams.containsKey("maxPrice") ? Double.parseDouble(queryParams.get("maxPrice")) : Double.MAX_VALUE;  
@@ -96,8 +89,6 @@ public class SimpleHttpServer {
         while ((line = in.readLine()) != null && !line.isEmpty()) {  
             requestBody.append(line);  
         }  
-
-        // Проста "обробка" отриманих даних  
         String[] parts = requestBody.toString().split(",");  
         if (parts.length == 2) {  
             String productName = parts[0].trim();  
